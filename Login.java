@@ -24,11 +24,13 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 
 public class Login extends Application {
+    Game game;
     String Username;
     String Password;
     BackgroundFill backgroundFill = new BackgroundFill(Paint.valueOf("#BBBB00"), new CornerRadii(20), Insets.EMPTY);
@@ -203,6 +205,7 @@ public class Login extends Application {
             request.setType(Message.Type.LOGOUT);
             request.setFromPlayer(username);
             SocketUtil.send(s, request);
+            Platform.exit();
         });
 
         Scene scene = new Scene(account);
@@ -211,59 +214,84 @@ public class Login extends Application {
         ClientThread c = new ClientThread();
         c.socket = s;
         c.l = response -> {
-            if (response.getType().equals(Message.Type.FIGHT)) {
-                new Thread(() -> Platform.runLater(() -> {
-                    try {
-                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                        alert.setContentText(response.getFromPlayer() + " want to fight with you");
-                        alert.setTitle("Request against");
-                        ButtonType buttonTypeOne = new ButtonType("Accept");
-                        ButtonType buttonTypeCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
-                        alert.getButtonTypes().setAll(buttonTypeOne, buttonTypeCancel);
-                        Optional<ButtonType> result = alert.showAndWait();
-                        if (result.isPresent() && result.get() == buttonTypeOne) {
-                            Message answer = new Message();
-                            answer.setType(Message.Type.FIGHT_SUCCESS);
-                            answer.setToPlayer(username);
-                            answer.setFromPlayer(response.getFromPlayer());
-                            SocketUtil.send(s, answer);
-                            Game game = new Game();
-                            game.lock = true;
-                            game.start();
-                        } else {
-                            Message answer = new Message();
-                            answer.setType(Message.Type.FIGHT_FAILURE);
-                            answer.setFromPlayer(response.getFromPlayer());
-                            answer.setToPlayer(username);
-                            SocketUtil.send(s, answer);
+            switch (response.getType()) {
+                case FIGHT:
+                    new Thread(() -> Platform.runLater(() -> {
+                        try {
+                            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                            alert.setContentText(response.getFromPlayer() + " want to fight with you");
+                            alert.setTitle("Request against");
+                            ButtonType buttonTypeOne = new ButtonType("Accept");
+                            ButtonType buttonTypeCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+                            alert.getButtonTypes().setAll(buttonTypeOne, buttonTypeCancel);
+                            Optional<ButtonType> result = alert.showAndWait();
+                            if (result.isPresent() && result.get() == buttonTypeOne) {
+                                Message answer = new Message();
+                                answer.setType(Message.Type.FIGHT_SUCCESS);
+                                answer.setToPlayer(response.getToPlayer());
+                                answer.setFromPlayer(response.getFromPlayer());
+                                SocketUtil.send(s, answer);
+                                game = new Game();
+                                game.name = username;
+                                game.rival = response.getFromPlayer();
+                                game.lock = true;
+                                game.start(s, response.getToPlayer(), response.getFromPlayer());
+                            } else {
+                                Message answer = new Message();
+                                answer.setType(Message.Type.FIGHT_FAILURE);
+                                answer.setFromPlayer(response.getFromPlayer());
+                                answer.setToPlayer(username);
+                                SocketUtil.send(s, answer);
+                            }
+                            this.stop();
+                        } catch (Exception e) {
+                            e.printStackTrace();
                         }
-                        this.stop();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                })).start();
-            } else if (response.getType().equals(Message.Type.PLAYER)) {
-                List<String> player = (List<String>) response.getContent();
-                player.remove(username);
-                new Thread(() -> Platform.runLater(() -> {
-                    try {
-                        playerList(player);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                })).start();
-            } else if (response.getType().equals(Message.Type.FIGHT_FAILURE)) {
-                new Thread(() -> Platform.runLater(() -> {
-                    try {
-                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                        alert.setTitle("Refuse");
-                        alert.setContentText(response.getToPlayer() + " refuse your request");
-                        alert.show();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                })).start();
-
+                    })).start();
+                    break;
+                case PLAYER:
+                    List<String> player = (List<String>) response.getContent();
+                    player.remove(username);
+                    new Thread(() -> Platform.runLater(() -> {
+                        try {
+                            playerList(player);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    })).start();
+                    break;
+                case FIGHT_FAILURE:
+                    new Thread(() -> Platform.runLater(() -> {
+                        try {
+                            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                            alert.setTitle("Refuse");
+                            alert.setContentText(response.getToPlayer() + " refuse your request");
+                            alert.show();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    })).start();
+                    break;
+                case FIGHT_SUCCESS:
+                    game = new Game();
+                    game.lock = false;
+                    game.name = username;
+                    game.start(s, response.getFromPlayer(), response.getToPlayer());
+                    break;
+                case PLANT:
+                    game.chessBoard[response.getX()][response.getY()] = game.TURN ? game.PLAY_1 : game.PLAY_2;
+                    game.count++;
+                    game.TURN = !game.TURN;
+                    game.lock = false;
+                    game.rival = response.getFromPlayer();
+                    game.drawChess();
+                    new Thread(() -> Platform.runLater(() -> {
+                        try {
+                            game.ifWin(response.getFromPlayer(), false);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    })).start();
             }
         };
         c.start();
@@ -500,39 +528,55 @@ public class Login extends Application {
         }
 
     }
+
     public static class Game {
-        private static final int[][] chessBoard = new int[3][3];
+
+        String name;
+        String rival;
+        private final int[][] chessBoard = new int[3][3];
         private static final boolean[][] flag = new boolean[3][3];
-        private static int count = 0;
-        private static final int PLAY_1 = 1;
-        private static final int PLAY_2 = 2;
-        private static final int EMPTY = 0;
+        private int count = 0;
+        private final int PLAY_1 = 1;
+        private final int PLAY_2 = 2;
+        private final int EMPTY = 0;
         private static final int BOUND = 90;
         private static final int OFFSET = 15;
-        private static boolean TURN = true;
+        boolean TURN = true;
         private Pane base_square = new Pane();
         private Rectangle game_panel = new Rectangle();
 
         public Boolean lock;
+        Stage primaryStage;
 
-
-        public void start() {
+        public void start(Socket socket, String from, String to) {
             new Thread(() -> Platform.runLater(() -> {
                 try {
-                    Stage primaryStage = new Stage();
-                    primaryStage.setTitle("Tic Tac Toe");
+                    primaryStage = new Stage();
+                    primaryStage.setTitle(from + "' Tic Tac Toe");
                     primaryStage.getIcons().add(new Image("file:\\D:\\\\idea\\\\assign2\\\\image\\\\sample.png"));
                     base_square = new Pane();
                     base_square.setPrefWidth(300);
                     base_square.setPrefHeight(300);
 //                    game_panel = new Rectangle();
                     base_square.setOnMouseClicked(event -> {
-                        if (lock) {
+                        if (!lock) {
                             int x = (int) (event.getX() / BOUND);
                             int y = (int) (event.getY() / BOUND);
-                            if (refreshBoard(x, y)) {
-                                TURN = !TURN;
+                            try {
+                                if (refreshBoard(x, y)) {
+                                    TURN = !TURN;
+                                }
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
                             }
+                            Message message = new Message();
+                            message.setX(x);
+                            message.setY(y);
+                            message.setType(Message.Type.PLANT);
+                            message.setFromPlayer(from);
+                            message.setToPlayer(to);
+                            SocketUtil.send(socket, message);
+                            lock = true;
                         }
                     });
                     Scene scene = new Scene(base_square);
@@ -546,42 +590,54 @@ public class Login extends Application {
         }
 
         private void drawCircle(int i, int j) {
-            Circle circle = new Circle();
-            base_square.getChildren().add(circle);
-            circle.setCenterX(i * BOUND + BOUND / 2.0 + OFFSET);
-            circle.setCenterY(j * BOUND + BOUND / 2.0 + OFFSET);
-            circle.setRadius(BOUND / 2.0 - OFFSET / 2.0);
-            circle.setStroke(Color.RED);
-            circle.setFill(Color.TRANSPARENT);
-            flag[i][j] = true;
+            new Thread(() -> Platform.runLater(() -> {
+                try {
+                    Circle circle = new Circle();
+                    base_square.getChildren().add(circle);
+                    circle.setCenterX(i * BOUND + BOUND / 2.0 + OFFSET);
+                    circle.setCenterY(j * BOUND + BOUND / 2.0 + OFFSET);
+                    circle.setRadius(BOUND / 2.0 - OFFSET / 2.0);
+                    circle.setStroke(Color.RED);
+                    circle.setFill(Color.TRANSPARENT);
+                    flag[i][j] = true;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            })).start();
         }
 
         private void drawLine(int i, int j) {
-            Line line_a = new Line();
-            Line line_b = new Line();
-            base_square.getChildren().add(line_a);
-            base_square.getChildren().add(line_b);
-            line_a.setStartX(i * BOUND + OFFSET * 1.5);
-            line_a.setStartY(j * BOUND + OFFSET * 1.5);
-            line_a.setEndX((i + 1) * BOUND + OFFSET * 0.5);
-            line_a.setEndY((j + 1) * BOUND + OFFSET * 0.5);
-            line_a.setStroke(Color.BLUE);
+            new Thread(() -> Platform.runLater(() -> {
+                try {
+                    Line line_a = new Line();
+                    Line line_b = new Line();
+                    base_square.getChildren().add(line_a);
+                    base_square.getChildren().add(line_b);
+                    line_a.setStartX(i * BOUND + OFFSET * 1.5);
+                    line_a.setStartY(j * BOUND + OFFSET * 1.5);
+                    line_a.setEndX((i + 1) * BOUND + OFFSET * 0.5);
+                    line_a.setEndY((j + 1) * BOUND + OFFSET * 0.5);
+                    line_a.setStroke(Color.BLUE);
 
-            line_b.setStartX((i + 1) * BOUND + OFFSET * 0.5);
-            line_b.setStartY(j * BOUND + OFFSET * 1.5);
-            line_b.setEndX(i * BOUND + OFFSET * 1.5);
-            line_b.setEndY((j + 1) * BOUND + OFFSET * 0.5);
-            line_b.setStroke(Color.BLUE);
-            flag[i][j] = true;
+                    line_b.setStartX((i + 1) * BOUND + OFFSET * 0.5);
+                    line_b.setStartY(j * BOUND + OFFSET * 1.5);
+                    line_b.setEndX(i * BOUND + OFFSET * 1.5);
+                    line_b.setEndY((j + 1) * BOUND + OFFSET * 0.5);
+                    line_b.setStroke(Color.BLUE);
+                    flag[i][j] = true;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            })).start();
         }
 
 
-        private boolean refreshBoard(int x, int y) {
+        private boolean refreshBoard(int x, int y) throws IOException {
             if (chessBoard[x][y] == EMPTY) {
                 chessBoard[x][y] = TURN ? PLAY_1 : PLAY_2;
                 count++;
                 drawChess();
-                ifWin();
+                ifWin(name, true);
                 return true;
             }
             return false;
@@ -611,64 +667,106 @@ public class Login extends Application {
             }
         }
 
-        private void ifWin() {
+        private void ifWin(String winner, boolean win) throws IOException {
             if (chessBoard[0][0] != 0 && chessBoard[0][0] == chessBoard[1][0] && chessBoard[1][0] == chessBoard[2][0]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][0] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
                 alert.show();
-                Platform.exit();
+                record(winner, rival);
+//                Platform.exit();
             } else if (chessBoard[0][1] != 0 && chessBoard[0][1] == chessBoard[1][1] && chessBoard[1][1] == chessBoard[2][1]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][1] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
                 alert.show();
-                Platform.exit();
+                record(winner, rival);
+//                Platform.exit();
             } else if (chessBoard[0][2] != 0 && chessBoard[0][2] == chessBoard[1][2] && chessBoard[1][2] == chessBoard[2][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][2] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
+                record(winner, rival);
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
             } else if (chessBoard[0][0] != 0 && chessBoard[0][0] == chessBoard[0][1] && chessBoard[0][1] == chessBoard[0][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][0] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
+                record(winner, rival);
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
             } else if (chessBoard[1][0] != 0 && chessBoard[1][0] == chessBoard[1][1] && chessBoard[1][1] == chessBoard[1][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[1][0] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
+                record(winner, rival);
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
             } else if (chessBoard[2][0] != 0 && chessBoard[2][0] == chessBoard[2][1] && chessBoard[2][1] == chessBoard[2][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[2][0] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
+                record(winner, rival);
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
             } else if (chessBoard[0][0] != 0 && chessBoard[0][0] == chessBoard[1][1] && chessBoard[1][1] == chessBoard[2][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][0] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
+                record(winner, rival);
             } else if (chessBoard[2][0] != 0 && chessBoard[2][0] == chessBoard[1][1] && chessBoard[1][1] == chessBoard[0][2]) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setContentText(chessBoard[0][2] == 1 ? "winner is player 1" : "winner is player 2");
+                alert.setContentText("Winner is " + winner);
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("win");
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
+                record(winner, rival);
             } else if (count == 9) {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
                 alert.setContentText("This is a draw!");
+                alert.setHeaderText(win ? "You win the game" : "You lose the game");
                 alert.setTitle("draw");
                 alert.show();
-                Platform.exit();
+//                Platform.exit();
+                winner = "";
+                record(winner, rival);
             }
         }
 
+        void record(String winner, String rival) throws IOException {
+            BufferedReader reader = new BufferedReader(new FileReader("D:\\idea\\assign2\\src\\Users.txt"));
+            List<String> information = new ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] info = line.split(" ");
+                if (info[0].equals(name)) {
+                    info[2] = String.valueOf(Integer.parseInt(info[2]) + 1);
+                    if (name.equals(winner)) {
+                        info[3] = String.valueOf(Integer.parseInt(info[3]) + 1);
+                    }
+                    information.add(info[0] + " " + info[1] + " " + info[2] + " " + info[3] + "\n");
+                } else {
+                    information.add(line + "\n");
+                }
+            }
+            BufferedWriter writer = new BufferedWriter(new FileWriter("D:\\idea\\assign2\\src\\Users.txt"));
+            for (String info : information) {
+                writer.write(info);
+            }
+            writer.close();
+            primaryStage.close();
+        }
     }
 
 }

@@ -3,6 +3,25 @@
 import java.io.Serializable;
 
 public class Message implements Serializable {
+  private int x;
+  private int y;
+
+  public int getX() {
+    return x;
+  }
+
+  public void setX(int x) {
+    this.x = x;
+  }
+
+  public int getY() {
+    return y;
+  }
+
+  public void setY(int y) {
+    this.y = y;
+  }
+
   private Object content;
   private Type type;
   private String from;

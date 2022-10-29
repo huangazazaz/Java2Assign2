@@ -70,11 +70,14 @@ public class Server {
                             Message fight = new Message();
                             fight.setType(Message.Type.FIGHT);
                             fight.setFromPlayer(request.getFromPlayer());
+                            fight.setToPlayer(request.getToPlayer());
                             SocketUtil.send(players.get(request.getToPlayer()), fight);
                             break;
                         case FIGHT_SUCCESS:
                             Message start = new Message();
-                            start.setType(Message.Type.SUCCESS);
+                            start.setType(Message.Type.FIGHT_SUCCESS);
+                            start.setFromPlayer(request.getFromPlayer());
+                            start.setToPlayer(request.getToPlayer());
                             SocketUtil.send(players.get(request.getFromPlayer()),start);
                             break;
                         case FIGHT_FAILURE:
@@ -83,6 +86,13 @@ public class Server {
                             result.setToPlayer(request.getToPlayer());
                             SocketUtil.send(players.get(request.getFromPlayer()),result);
                             break;
+                        case PLANT:
+                            Message to = new Message();
+                            to.setType(Message.Type.PLANT);
+                            to.setX(request.getX());
+                            to.setY(request.getY());
+                            to.setFromPlayer(request.getFromPlayer());
+                            SocketUtil.send(players.get(request.getToPlayer()),to);
                     }
                 }
             }
