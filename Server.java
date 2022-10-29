@@ -1,15 +1,11 @@
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Server {
 
-    HashMap<String, Battle> battles = new HashMap<>();
-
+    static HashMap<String, Socket> players = new HashMap<>();
 
     public static void main(String[] args) {
         new Server().start();
@@ -18,61 +14,79 @@ public class Server {
     public void start() {
         try {
             ServerSocket serverSocket = new ServerSocket(2000);
-            System.out.println("Server start");
-            Socket wait = null;
+            System.out.println("success");
             while (true) {
-                Socket accept = serverSocket.accept();
-//          Battle battle = new Battle();
-//          battles.put(battle.name, battle);
-                new Thread() {
-                    @Override
-                    public void run() {
-                        while (true) {
-                            Object receive = SocketUtil.receive(accept);
-                            if (receive instanceof Message) {
-                                Message request = (Message) receive;
-                                if (request.getType().equals(Message.Type.PLAYER)) {
-                                    Message message = new Message();
-                                    List<String> ps = new ArrayList<>();
-                                    ps.add("a");
-                                    ps.add("e");
-                                    ps.add("d");
-                                    ps.add("c");
-                                    ps.add("b");
-                                    message.setContent(ps);
-                                    SocketUtil.send(accept, message);
-                                }
-                            }
-                        }
-                    }
-                }.start();
+                Socket socket = serverSocket.accept();
+                System.out.println(socket.getInetAddress().getHostName());
+                ServerThread serverThread = new ServerThread(socket);
+                serverThread.start();
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-}
 
-class Battle {
-    Socket[] players = new Socket[2];
+    public static class ServerThread extends Thread {
+        private Socket socket;
 
-    String name;
+        public ServerThread() {
+        }
 
-    void start() {
-        new Thread() {
-            @Override
-            public void run() {
-                while (true) {
+        public ServerThread(Socket socket) {
+            this.socket = socket;
+        }
 
+        public Socket getSocket() {
+            return socket;
+        }
+
+        public void setSocket(Socket socket) {
+            this.socket = socket;
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                Object receive = SocketUtil.receive(socket);
+                if (receive instanceof Message) {
+                    Message request = (Message) receive;
+                    System.out.println(request.getType());
+                    switch (request.getType()) {
+                        case PLAYER:
+                            Message message = new Message();
+                            List<String> p = new LinkedList<>(players.keySet());
+                            message.setContent(p);
+                            message.setType(Message.Type.PLAYER);
+                            SocketUtil.send(socket, message);
+                            break;
+                        case LOGIN:
+                            players.put(request.getFromPlayer(), socket);
+                            break;
+                        case LOGOUT:
+                            players.remove(request.getFromPlayer());
+                            this.stop();
+                            break;
+                        case FIGHT:
+                            Message fight = new Message();
+                            fight.setType(Message.Type.FIGHT);
+                            fight.setFromPlayer(request.getFromPlayer());
+                            SocketUtil.send(players.get(request.getToPlayer()), fight);
+                            break;
+                        case FIGHT_SUCCESS:
+                            Message start = new Message();
+                            start.setType(Message.Type.SUCCESS);
+                            SocketUtil.send(players.get(request.getFromPlayer()),start);
+                            break;
+                        case FIGHT_FAILURE:
+                            Message result = new Message();
+                            result.setType(Message.Type.FIGHT_FAILURE);
+                            result.setToPlayer(request.getToPlayer());
+                            SocketUtil.send(players.get(request.getFromPlayer()),result);
+                            break;
+                    }
                 }
             }
-        }.start();
-    }
-
-
-    void add(Socket p1, Socket p2) {
-        players[0] = p1;
-        players[1] = p2;
-        name = p1.getInetAddress().getHostName() + p2.getInetAddress().getHostName();
+        }
     }
 }
+

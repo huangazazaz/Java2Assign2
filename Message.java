@@ -82,10 +82,12 @@ public class Message implements Serializable {
   public enum Type {
     LOGIN,//登陆
     REG,//注册
+    LOGOUT,//下线
     FORGOT,//忘记密码
     LIST,//在线用户
     FIGHT,//对战
     FIGHT_SUCCESS,//对战成功
+    FIGHT_FAILURE,//对战失败
     SUCCESS,//成功
     FAILURE,//失败
     PLANT,//下子
