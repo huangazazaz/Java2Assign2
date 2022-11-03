@@ -22,6 +22,16 @@ public class Message implements Serializable {
     this.y = y;
   }
 
+  private boolean quit;
+
+  public boolean isQuit() {
+    return quit;
+  }
+
+  public void setQuit(boolean quit) {
+    this.quit = quit;
+  }
+
   private Object content;
   private Type type;
   private String from;
@@ -98,12 +108,12 @@ public class Message implements Serializable {
   public void setToPlayer(String toPlayer) {
     this.toPlayer = toPlayer;
   }
+
   public enum Type {
     LOGIN,//登陆
     REG,//注册
     LOGOUT,//下线
     FORGOT,//忘记密码
-    LIST,//在线用户
     FIGHT,//对战
     FIGHT_SUCCESS,//对战成功
     FIGHT_FAILURE,//对战失败
@@ -111,5 +121,9 @@ public class Message implements Serializable {
     FAILURE,//失败
     PLANT,//下子
     PLAYER,//玩家列表
+    BREAK,//服务器崩溃
+    WAIT,//掉线待重连
+    RENEW,//重连
+    END;//游戏结束
   }
 }

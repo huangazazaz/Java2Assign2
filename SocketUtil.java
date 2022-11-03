@@ -1,5 +1,11 @@
 
 
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
+import javafx.stage.Stage;
+
+import javax.swing.*;
 import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -19,18 +25,19 @@ public class SocketUtil {
   }
 
   public static Object receive(Socket s) {
-    InputStream inputStream ;
+    InputStream inputStream;
     ObjectInputStream objectInputStream;
     try {
       inputStream = s.getInputStream();
       objectInputStream = new ObjectInputStream(inputStream);
       return objectInputStream.readObject();
     } catch (Exception e) {
-      e.printStackTrace();
+      Message m = new Message();
+      m.setType(Message.Type.BREAK);
+      return m;
     }
-
-    return null;
   }
+
   public static Socket create(String ip, int port) {
 
     try {
