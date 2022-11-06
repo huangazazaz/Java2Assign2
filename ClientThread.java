@@ -5,6 +5,7 @@ import java.net.Socket;
 import java.util.Vector;
 
 public class ClientThread extends Thread {
+
   Socket socket;
   ResponseListener l;
   private boolean shotDown;
