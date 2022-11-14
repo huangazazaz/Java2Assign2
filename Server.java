@@ -63,14 +63,33 @@ public class Server {
                 if (receive instanceof Message) {
                     Message request = (Message) receive;
                     switch (request.getType()) {
+                        case RENEW:
+                            for (Battle item : battles) {
+                                if (item.player1.equals(request.getToPlayer()) || item.player2.equals(request.getToPlayer())) {
+                                    item.state = (List<Object>) request.getContent();
+                                    break;
+                                }
+                            }
+                            break;
                         case BREAK:
-                            String n;
                             for (String a : threads.keySet()) {
                                 if (threads.get(a).equals(this.getName())) {
-                                    n = a;
-                                    players.remove(n);
+                                    boolean ing = false;
+                                    for (Battle battle : battles) {
+                                        if (battle.player2.equals(a) || battle.player1.equals(a)) {
+                                            ing = true;
+                                            Message b = new Message(Message.Type.LOGOUT);
+                                            b.setFromPlayer(a.equals(battle.player1) ? battle.player1 : battle.player2);
+                                            SocketUtil.send(players.get(a.equals(battle.player2) ? battle.player1 : battle.player2), b);
+                                            System.out.println(a + " exit the game abnormally and wait to back");
+                                            break;
+                                        }
+                                    }
+                                    players.remove(a);
                                     threads.remove(a);
-                                    System.out.println(n + " exit the game abnormally");
+                                    if (!ing) {
+                                        System.out.println(a + " exit the game abnormally");
+                                    }
                                     break;
                                 }
                             }
@@ -149,7 +168,7 @@ public class Server {
 
                             break;
                         case REFRESH:
-                            System.out.println(request.getFromPlayer()+" refresh record");
+                            System.out.println(request.getFromPlayer() + " refresh record");
                             Message refresh = new Message(Message.Type.REFRESH);
                             try {
                                 BufferedReader reader = new BufferedReader(new FileReader("src\\Users.txt"));
@@ -159,7 +178,7 @@ public class Server {
                                     if (info[0].equals(request.getFromPlayer())) {
                                         refresh.setFrom(info[2]);
                                         refresh.setTo(info[3]);
-                                        SocketUtil.send(socket,refresh);
+                                        SocketUtil.send(socket, refresh);
                                         break;
                                     }
                                 }
@@ -188,7 +207,7 @@ public class Server {
                             SocketUtil.send(players.get(request.getToPlayer()), fight);
                             break;
                         case FIGHT_SUCCESS:
-                            System.out.println("fight start successful");
+                            System.out.println("fight between " + request.getFromPlayer() + " and " + request.getToPlayer() + " start successful");
                             Battle battle = new Battle();
                             battle.player1 = request.getToPlayer();
                             battle.player2 = request.getFromPlayer();

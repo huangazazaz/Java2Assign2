@@ -142,6 +142,35 @@ public class Login extends Application {
         c.socket = s;
         c.l = response -> {
             switch (response.getType()) {
+                case LOGOUT:
+                    Platform.runLater(() -> {
+                        try {
+                            List<Object> state = new ArrayList<>();
+                            state.add(game.name);
+                            state.add(game.rival);
+                            state.add(game.end);
+                            state.add(game.chessBoard);
+                            state.add(game.count);
+                            state.add(game.TURN);
+                            state.add(!game.lock);
+                            Message answer = new Message();
+                            answer.setType(Message.Type.RENEW);
+//                            answer.setFromPlayer(game.rival);
+                            answer.setToPlayer(game.name);
+                            answer.setContent(state);
+                            SocketUtil.send(s, answer);
+                            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                            alert.setContentText("Your opponent leaves the game abnormally!");
+                            alert.setHeaderText("Please wait");
+                            alert.setTitle("Wait");
+                            game.wait = true;
+                            alert.show();
+//                            stop();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    });
+                    break;
                 case REFRESH:
                     Platform.runLater(() -> {
                         yourScore.setText(response.getFrom());
@@ -198,7 +227,7 @@ public class Login extends Application {
                             alert.setContentText(response.getFromPlayer() + " want to fight with you");
                             alert.setTitle("Request against");
                             ButtonType buttonTypeOne = new ButtonType("Accept");
-                            ButtonType buttonTypeCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+                            ButtonType buttonTypeCancel = new ButtonType("Refuse", ButtonBar.ButtonData.CANCEL_CLOSE);
                             alert.getButtonTypes().setAll(buttonTypeOne, buttonTypeCancel);
                             Optional<ButtonType> result = alert.showAndWait();
                             if (result.isPresent() && result.get() == buttonTypeOne) {
@@ -445,11 +474,57 @@ public class Login extends Application {
         Pane account = new Pane();
         account.getChildren().addAll(name, Session, win, list, win_times, yourScore, yourName, refresh);
         lobby.setOnCloseRequest(event -> {
-            Message request = new Message();
-            request.setType(Message.Type.LOGOUT);
-            request.setFromPlayer(username);
-            SocketUtil.send(s, request);
-            System.exit(0);
+            if (game != null && !game.end) {
+                new Thread(() -> Platform.runLater(() -> {
+                    try {
+                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                        alert.setContentText("Do you want to quit game?");
+                        alert.setTitle("Quit");
+                        ButtonType buttonTypeOne = new ButtonType("Quit");
+                        ButtonType buttonTypeCancel = new ButtonType("Wait", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(buttonTypeOne, buttonTypeCancel);
+                        Optional<ButtonType> result = alert.showAndWait();
+                        if (result.isPresent() && result.get() == buttonTypeOne) {
+                            Message message = new Message();
+                            message.setType(Message.Type.FAILURE);
+                            message.setFromPlayer(game.name);
+                            message.setToPlayer(game.rival);
+                            SocketUtil.send(s, message);
+                            try {
+                                game.record(game.rival);
+                                System.exit(0);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        } else {
+                            List<Object> state = new ArrayList<>();
+                            state.add(game.rival);
+                            state.add(game.name);
+                            state.add(game.end);
+                            state.add(game.chessBoard);
+                            state.add(game.count);
+                            state.add(game.TURN);
+                            state.add(game.lock);
+                            Message answer = new Message();
+                            answer.setType(Message.Type.WAIT);
+                            answer.setFromPlayer(game.name);
+                            answer.setToPlayer(game.rival);
+                            answer.setContent(state);
+                            SocketUtil.send(s, answer);
+                            System.exit(0);
+                        }
+                        Thread.currentThread().stop();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                })).start();
+            } else {
+                Message request = new Message();
+                request.setType(Message.Type.LOGOUT);
+                request.setFromPlayer(username);
+                SocketUtil.send(s, request);
+                System.exit(0);
+            }
         });
 
         Scene scene = new Scene(account);
